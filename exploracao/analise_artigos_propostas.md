@@ -197,11 +197,9 @@ A contribuição é um estudo experimental rigoroso sobre eficiência de rotulag
 | Revisores podem questionar relevância clínica sem validação com médicos reais | ⚠️ Baixa | Enquadrar como estudo de eficiência de rotulagem, não como ferramenta clínica. Comparar com baselines publicados no ISIC Challenge |
 
 ---
----
 
 # PARTE B — Pesquisas Não-Aplicadas (Contribuição Metodológica)
 
----
 
 ## B1 — Active Learning Combinado com Detecção de Novelty em Data Streams
 
