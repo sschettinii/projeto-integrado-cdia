@@ -45,22 +45,23 @@ Diferente do aprendizado supervisionado clássico em lote (*batch*), dois desafi
 
 ```mermaid
 flowchart TD
-    subgraph Etapa 1: Arquitetura Algorítmica
+    subgraph Etapa_1 [Etapa 1 - Arquitetura Algorítmica]
         A[Instância xt] --> B[Extrator / Micro-Clusters CluStream]
         A --> C[Classificador Incremental ARF / Hoeffding]
         B --> D[Novelty Score: S_nov]
         C --> E[Uncertainty Score: S_unc]
-        D & E --> F[Função de Utilidade Unificada U xt]
+        D --> F[Função de Utilidade Unificada U xt]
+        E --> F
     end
 
-    subgraph Etapa 2: Orçamento Adaptativo
-        F --> G{Decisor de Query U xt >= Threshold e Budget B disponível?}
+    subgraph Etapa_2 [Etapa 2 - Orçamento Adaptativo]
+        F --> G{Decisor de Query: U xt maior ou igual a Threshold e Budget disponivel?}
         G -->|Sim| H[Consulta Oráculo: y_true]
         G -->|Não| I[Inferência Passiva / Abstenção]
-        H --> J[Atualiza Micro-Clusters + Atualiza Classificador]
+        H --> J[Atualiza Micro-Clusters + Classificador]
     end
 
-    subgraph Etapa 3 & 4: Avaliação Experimental
+    subgraph Etapa_3_4 [Etapa 3 e 4 - Avaliação Experimental]
         J --> K[Avaliação Prequential Interleaved-Test-Then-Train]
         I --> K
         K --> L[Métricas: F1 Prequencial, Latência de Novidade, Custo Real]

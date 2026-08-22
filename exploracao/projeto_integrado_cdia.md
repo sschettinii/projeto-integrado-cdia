@@ -653,3 +653,292 @@ Este projeto produz o **primeiro benchmark abrangente de runtimes de inferência
 4. **ONNX Runtime Mobile**: [onnxruntime.ai](https://onnxruntime.ai/)
 5. **ExecuTorch (Meta)**: [github.com/pytorch/executorch](https://github.com/pytorch/executorch)
 6. **PQ Bench, HPI 2025** — Benchmark complementar de compressão
+
+---
+
+# Projetos — ML vs. Fórmulas Matemáticas do Estado da Arte
+
+> **Conceito Geral:** Existem diversos problemas aplicados do mundo real em que o "estado da arte" ainda são fórmulas empíricas, correlações semi-analíticas ou modelos numéricos baseados em equações diferenciais (EDPs). A academia frequentemente prova que o algoritmo é correto matematicamente, mas as simplificações das fórmulas clássicas (linearidade, homogeneidade, condições ideais) limitam sua precisão em cenários reais. O ML pode capturar as não-linearidades que as fórmulas ignoram, oferecendo ganhos concretos de acurácia ou velocidade.
+
+> **Critérios de Filtragem:** As propostas abaixo foram selecionadas com base em:
+> 1. **Dados públicos abundantes** — existem datasets acessíveis e de qualidade
+> 2. **Lacuna não-redundante** — há espaço para contribuição original (não é simplesmente "aplicar XGBoost e ganhar")
+> 3. **Viabilidade em 4 meses** — escopo factível para pesquisador autônomo sem infraestrutura especial
+> 4. **Valor formativo** — desenvolve competências relevantes para Ciência de Dados e IA
+
+---
+
+## C1 — ML vs. Fórmulas de Resistência do Concreto: Superando Correlações Empíricas com Modelos Interpretáveis
+
+**Domínio:** Engenharia Civil / Materiais de Construção
+**Fórmula SOTA:** Correlações empíricas do ACI 318 (relação água/cimento de Abrams, 1918) e normas como NBR 6118
+**Eixos:** ML Tabular + Engenharia de Features + Explainable AI (XAI)
+
+### Descrição detalhada
+
+A resistência à compressão do concreto ($f_c$) é a propriedade mecânica mais importante na engenharia civil. As fórmulas empíricas usadas há mais de um século (como a Lei de Abrams: $f_c \propto 1 / (a/c)^k$) foram derivadas sob condições ideais e falham sistematicamente para misturas modernas que incluem aditivos químicos, cinzas volantes, escória de alto-forno, sílica ativa e agregados reciclados.
+
+O projeto propõe:
+
+1. **Benchmark rigoroso:** Treinar e comparar 5+ modelos (Linear Regression como baseline, Random Forest, XGBoost, LightGBM, MLP) contra as fórmulas empíricas do ACI, usando o dataset público do UCI.
+2. **Análise de interpretabilidade (XAI):** Usar **SHAP values** para extrair quais variáveis (cimento, água, superplastificante, idade) mais influenciam a predição. Comparar a "lógica" do modelo ML com a lógica das fórmulas clássicas.
+3. **Regressão simbólica:** Usar bibliotecas como **PySR** ou **gplearn** para descobrir automaticamente uma fórmula matemática nova que tenha acurácia superior às fórmulas clássicas, mas que seja interpretável (ex: uma equação de 5-8 termos que o engenheiro pode usar no campo).
+
+**A contribuição original:** A maioria dos papers existentes apenas mostra que "XGBoost ganha do ACI". O diferencial aqui é **(a)** usar regressão simbólica para propor uma **nova fórmula fechada**, e **(b)** analisar se essa fórmula redescobre princípios físicos conhecidos ou revela relações novas.
+
+### Estado da pesquisa existente (Análise de Redundância)
+
+| O que já foi feito | O que falta (nossa contribuição) |
+|---|---|
+| XGBoost/RF com R² > 0.90 no UCI Concrete (centenas de papers) | **Regressão simbólica** para gerar fórmula fechada comparável em simplicidade às fórmulas do ACI |
+| SHAP analysis genérica (feature importance) | Comparação **quantitativa** entre a lógica SHAP e a lógica das fórmulas empíricas clássicas (ex: a fórmula de Abrams assume monotonia estrita da relação a/c — o SHAP confirma isso?) |
+| Predição de f_c com dados limpos de laboratório | Análise de **robustez a ruído** e a dados fora da distribuição de treino (extrapolação), comparando ML vs. fórmula |
+
+### Datasets públicos
+
+| Dataset | Tamanho | Acesso |
+|---------|---------|--------|
+| [UCI Concrete Compressive Strength](https://archive.ics.uci.edu/dataset/165/concrete+compressive+strength) | 1.030 amostras, 8 features + target | Público, gratuito |
+| [Kaggle - Concrete Strength](https://www.kaggle.com/datasets/sinamhd9/concrete-comprehensive-strength) | Variantes ampliadas do UCI | Público |
+| Dados complementares de artigos (Supplementary Materials) | Variável | Publicados em periódicos |
+
+### Dificuldades e riscos
+
+| Dificuldade | Severidade | Mitigação |
+|-------------|:----------:|-----------|
+| Dataset UCI é pequeno (1.030 amostras) para deep learning | ⚠️ Média | Focar em modelos tabulares (XGBoost, RF). 1.030 é suficiente para estes. Deep learning não é necessário aqui |
+| Regressão simbólica pode gerar fórmulas instáveis ou overfitted | ⚠️ Média | Limitar complexidade da expressão (máx 8 termos). Validar com cross-validation rigoroso (5-fold) |
+| Contribuição pode parecer incremental ("mais um paper de concrete strength") | ⚠️ Alta | O diferencial é a regressão simbólica + análise de redescobrimento de princípios físicos. Nenhum paper no UCI faz isso sistematicamente |
+
+### Referências-chave
+
+1. **Yeh, I-Cheng, "Modeling of strength of high-performance concrete using artificial neural networks", Cement and Concrete Research, 1998** — O paper original do dataset UCI
+2. **Cranmer et al., "Discovering Symbolic Models from Deep Learning with Inductive Biases", NeurIPS 2020** — PySR, regressão simbólica
+3. **Lundberg & Lee, "A Unified Approach to Interpreting Model Predictions", NeurIPS 2017** — SHAP
+
+---
+
+## C2 — ML vs. Equação de Penman-Monteith: Predição de Evapotranspiração com Dados Climáticos Escassos
+
+**Domínio:** Agronomia / Hidrologia / Irrigação
+**Fórmula SOTA:** FAO-56 Penman-Monteith ($ET_0$)
+**Eixos:** ML Tabular + Séries Temporais + Dados Ambientais
+
+### Descrição detalhada
+
+A equação de Penman-Monteith (PM) é o padrão-ouro da FAO para estimar a evapotranspiração de referência ($ET_0$), mas exige **6 variáveis meteorológicas** simultâneas: temperatura máx/mín, umidade relativa, velocidade do vento, radiação solar e pressão atmosférica. Em regiões de países em desenvolvimento (como grande parte do interior do Brasil), muitas estações medem apenas temperatura.
+
+**A pergunta de pesquisa:** *Um modelo de ML treinado apenas com temperatura (e opcionalmente com dados de satélite) consegue superar as fórmulas simplificadas (Hargreaves-Samani, Thornthwaite) e se aproximar da acurácia da Penman-Monteith completa?*
+
+O projeto propõe:
+
+1. **Cenários de escassez de dados:** Treinar modelos com (a) todas as 6 variáveis, (b) apenas temperatura + umidade, (c) apenas temperatura. Comparar ML vs. PM completa vs. Hargreaves.
+2. **Dados do INMET:** O Instituto Nacional de Meteorologia do Brasil fornece dados horários de ~600 estações. Isso dá um dataset massivo e real, específico para o Brasil.
+3. **Avaliação regional:** Testar se um modelo treinado em São Paulo generaliza para o Nordeste (clima semiárido) — problema real de transferência de domínio.
+
+### Estado da pesquisa existente (Análise de Redundância)
+
+| O que já foi feito | O que falta (nossa contribuição) |
+|---|---|
+| ML vs. PM em estações individuais (papers locais para Irã, China, Turquia) | **Estudo nacional brasileiro** usando dados do INMET — não existe para o Brasil com escala de 600 estações |
+| XGBoost com R² > 0.95 usando todas as variáveis | Análise de degradação gradual conforme variáveis são removidas (cenários b e c). Pergunta: **onde está o ponto de joelho?** |
+| Comparação superficial de 2-3 modelos | Estudo sistemático com 5+ modelos + análise de transferência regional (SP → NE) |
+
+### Datasets públicos
+
+| Dataset | Tamanho | Acesso |
+|---------|---------|--------|
+| [INMET - Dados Meteorológicos](https://portal.inmet.gov.br/dadoshistoricos) | ~600 estações, dados horários desde 2000 | Público, gratuito, formato CSV |
+| [NASA POWER](https://power.larc.nasa.gov/) | Dados de satélite globais (radiação, temperatura) | Público, API gratuita |
+| [Copernicus ERA5](https://cds.climate.copernicus.eu/) | Reanálise climática global, resolução ~30km | Público, requer registro |
+| [YieldSAT](https://github.com/) | Dataset multimodal agrícola com dados climáticos | Público |
+
+### Dificuldades e riscos
+
+| Dificuldade | Severidade | Mitigação |
+|-------------|:----------:|-----------|
+| Baixar e limpar dados do INMET é trabalhoso (600 estações × 20+ anos) | ⚠️ Alta | Focar em 50-100 estações bem distribuídas. Usar scripts Python (pandas) para automação. Reservar 2 semanas para ETL |
+| PM requer radiação solar, que nem todas as estações medem | ⚠️ Média | Usar estimativas via fórmula de Angströn ou dados de satélite (NASA POWER) como proxy |
+| Contribuição pode parecer "apenas validação regional" | ⚠️ Média | O diferencial é a análise de escassez progressiva de inputs + transferência cross-regional. Contextualizar para a agricultura brasileira (alto impacto social) |
+
+### Referências-chave
+
+1. **Allen et al., "Crop evapotranspiration - Guidelines for computing crop water requirements", FAO Irrigation and Drainage Paper 56, 1998** — A referência canônica
+2. **Hargreaves & Samani, "Reference Crop Evapotranspiration from Temperature", Applied Engineering in Agriculture, 1985** — Fórmula simplificada
+3. **Ferreira et al., "New approach to estimate daily ET0 based on limited meteorological data", Agric. Water Management, 2019** — ML para ET0 com dados escassos
+
+---
+
+## C3 — ML vs. Black-Scholes: Precificação de Opções no Mercado Brasileiro (B3)
+
+**Domínio:** Finanças Quantitativas
+**Fórmula SOTA:** Black-Scholes-Merton (1973)
+**Eixos:** Deep Learning + Séries Temporais + Dados Financeiros
+
+### Descrição detalhada
+
+A fórmula de Black-Scholes (BS) é a base teórica para precificação de opções e permanece como benchmark na indústria financeira há 50 anos. Contudo, ela assume (1) volatilidade constante, (2) mercado sem fricção e (3) log-normalidade dos retornos — premissas que são sistematicamente violadas no mercado real, especialmente em mercados emergentes como o brasileiro.
+
+Pesquisas recentes (2024-2025) usando deep residual networks na B3 demonstraram **redução de 64.3% no erro médio absoluto** vs. Black-Scholes para opções de ações brasileiras.
+
+O projeto propõe:
+
+1. **Coleta de dados da B3:** Usar a API pública da B3 (ou datasets do Kaggle/Yahoo Finance) para obter séries históricas de preços de opções e do ativo subjacente (PETR4, VALE3, IBOVESPA).
+2. **Modelos comparados:** Black-Scholes analítico (baseline), MLP, LSTM, Deep Residual Network, XGBoost com features financeiras (Greeks, volatilidade implícita, put-call parity).
+3. **Análise de cenários:** Avaliar performance por (a) moneyness (ITM, ATM, OTM), (b) tempo até expiração, (c) regime de volatilidade (baixa vs. crise).
+
+### Estado da pesquisa existente (Análise de Redundância)
+
+| O que já foi feito | O que falta (nossa contribuição) |
+|---|---|
+| Deep learning vs. BS em mercados desenvolvidos (S&P 500, NYSE) — centenas de papers | Pouquíssimos estudos no **mercado brasileiro (B3)** com dados reais de opções líquidas |
+| ResNet vs. BS mostrando 64% de redução de MAE (arXiv 2025) | Análise **por regime de mercado** (volatilidade normal vs. crise) — quando o ML falha? |
+| Modelos puramente data-driven | Modelo **híbrido** que usa Black-Scholes como feature de entrada (BS-aware neural network) |
+
+### Datasets públicos
+
+| Dataset | Tamanho | Acesso |
+|---------|---------|--------|
+| [Yahoo Finance](https://finance.yahoo.com/) via `yfinance` | Preços diários de ações brasileiras | Público, API Python |
+| [B3 - Dados Históricos](https://www.b3.com.br/pt_br/market-data-e-indices/) | Séries de derivativos | Público (requer parsing) |
+| [Kaggle - Options Pricing](https://www.kaggle.com/datasets) | Datasets processados de opções | Público |
+| [OptionMetrics IvyDB](https://optionmetrics.com/) | Dados institucionais (alternativa acadêmica) | Requer acesso institucional |
+
+### Dificuldades e riscos
+
+| Dificuldade | Severidade | Mitigação |
+|-------------|:----------:|-----------|
+| Dados de opções da B3 podem ser escassos (liquidez baixa em muitas séries) | ⚠️ Alta | Focar apenas em opções de PETR4 e VALE3 (as mais líquidas). Ou usar dados do S&P 500 como complemento |
+| Calcular volatilidade implícita requer solver numérico (Newton-Raphson) | ⚠️ Média | Usar biblioteca `py_vollib` ou `QuantLib`. Implementação é padrão |
+| Risco de overfitting em dados financeiros (data leakage temporal) | ⚠️ Alta | Usar **walk-forward validation** (nunca treinar com dados do futuro). Split temporal estrito |
+| Conhecimento de finanças quantitativas necessário | ⚠️ Média | Estudar capítulos 1-5 do Hull, "Options, Futures, and Other Derivatives". BS é uma fórmula bem documentada |
+
+### Referências-chave
+
+1. **Black & Scholes, "The Pricing of Options and Corporate Liabilities", J. Political Economy, 1973** — O paper seminal
+2. **Culkin & Das, "Machine Learning in Finance: The Case of Deep Learning for Option Pricing", J. Investment Management, 2017** — DL vs. BS
+3. **Deep Residual Networks for Options Pricing on B3, arXiv 2025** — 64.3% de redução de MAE
+4. **Hull, "Options, Futures, and Other Derivatives", 11th ed.** — Referência didática
+
+---
+
+## C4 — ML vs. Modelos de Degradação de Baterias: Predição do Estado de Saúde (SOH) de Baterias Li-Ion
+
+**Domínio:** Engenharia Elétrica / Mobilidade Elétrica / IoT
+**Fórmula SOTA:** Modelos de circuito equivalente (ECM), Coulomb counting, correlações empíricas de degradação
+**Eixos:** Séries Temporais + Deep Learning (LSTM/CNN) + Dados de Sensores
+
+### Descrição detalhada
+
+O **State of Health (SOH)** de baterias de lítio é estimado hoje por modelos analíticos que usam contagem de Coulombs e modelos de circuito equivalente. Estas abordagens exigem calibração específica para cada química de bateria e falham ao extrapolar para condições operacionais novas (temperaturas extremas, taxas de carga/descarga variáveis, envelhecimento calendário).
+
+Estudos recentes (2024-2026) mostram que LSTMs e CNNs 1D conseguem prever SOH com **erro inferior a 2%**, superando significativamente os modelos empíricos, especialmente para predição de vida útil remanescente (RUL).
+
+O projeto propõe:
+
+1. **Benchmark multi-dataset:** Treinar e avaliar modelos nos datasets públicos da NASA PCoE e Stanford, que contêm ciclos completos de carga/descarga até a falha.
+2. **Features de engenharia:** Extrair features dos perfis de tensão/corrente (ex: área sob a curva de descarga, taxa de queda de capacidade, impedância estimada) em vez de usar as curvas brutas.
+3. **Comparação:** ECM clássico (com parâmetros calibrados) vs. Random Forest vs. LSTM vs. CNN-1D vs. Transformer temporal.
+
+### Estado da pesquisa existente (Análise de Redundância)
+
+| O que já foi feito | O que falta (nossa contribuição) |
+|---|---|
+| LSTM para SOH com datasets da NASA (muitos papers) | **Comparação justa multi-dataset** — maioria dos papers usa apenas 1 dataset. Falta cross-dataset generalization |
+| Physics-Informed Neural Networks (PINNs) para SOH | **Estudo de engenharia de features vs. aprendizado end-to-end** — quais features manuais o modelo aprende sozinho? |
+| Federated Learning para SOH (tendência 2025) | Análise de **degradação da acurácia por horizonte de predição** (quantos ciclos à frente o modelo acerta?) |
+
+### Datasets públicos
+
+| Dataset | Tamanho | Acesso |
+|---------|---------|--------|
+| [NASA PCoE Battery Dataset](https://www.nasa.gov/intelligent-systems-division/discovery-and-systems-health/pcoe/pcoe-data-set-repository/) | 4 baterias, ~168 ciclos cada, até falha | Público, gratuito |
+| [Stanford / SLAC Battery Data](https://data.matr.io/1/) | 124 baterias LFP, ~1200 ciclos cada | Público, gratuito |
+| [Battery Archive (Sandia)](https://www.batteryarchive.org/) | Múltiplas químicas e protocolos | Público |
+| [BatteryLife (2025)](https://github.com/) | Dataset diverso recente | Público |
+
+### Dificuldades e riscos
+
+| Dificuldade | Severidade | Mitigação |
+|-------------|:----------:|-----------|
+| NASA PCoE tem apenas 4 baterias — muito pouco para DL | ⚠️ Alta | Combinar com Stanford (124 baterias). Usar data augmentation (janelamento, jitter). Focar em modelos tabulares para datasets pequenos |
+| Features de engenharia requerem conhecimento de eletroquímica | ⚠️ Média | Features padrão estão documentadas na literatura. Usar capacidade por ciclo, resistência interna estimada, e gradientes de tensão |
+| Comparação com ECM requer implementação do modelo físico | ⚠️ Média | Usar implementações prontas (PyBaMM). Ou comparar apenas contra baseline empírico simples (regressão linear da capacidade vs. ciclo) |
+
+### Referências-chave
+
+1. **Saha & Goebel, "Battery Data Set", NASA Prognostics Center of Excellence, 2007** — Dataset canônico
+2. **Severson et al., "Data-driven prediction of battery cycle life before capacity degradation", Nature Energy, 2019** — 124 baterias, o paper que popularizou ML para baterias
+3. **Roman et al., "Machine learning pipeline for battery state-of-health estimation", Nature Machine Intelligence, 2021** — Pipeline completo
+
+---
+
+## C5 — ML vs. Modelos Gaussianos de Dispersão: Predição de Qualidade do Ar (PM2.5)
+
+**Domínio:** Engenharia Ambiental / Saúde Pública
+**Fórmula SOTA:** Modelos Gaussianos de dispersão (Gaussian Plume), AERMOD, CALPUFF
+**Eixos:** Séries Temporais + ML Tabular + Dados Ambientais
+
+### Descrição detalhada
+
+Os modelos regulatórios de qualidade do ar (como o **Gaussian Plume Model** e o AERMOD) são baseados em soluções analíticas da equação de difusão-advecção. Eles assumem terreno plano, vento constante, emissões estacionárias e ausência de reações químicas. Em ambientes urbanos reais, **todas essas premissas são violadas**.
+
+ML tem demonstrado superioridade consistente em predição de PM2.5 (material particulado fino), especialmente com features meteorológicas e dados de sensores de baixo custo.
+
+O projeto propõe:
+
+1. **Dados do CETESB:** A Companhia Ambiental do Estado de São Paulo disponibiliza dados horários de ~70 estações de monitoramento com PM2.5, PM10, O3, NO2, SO2, temperatura, umidade, velocidade do vento.
+2. **Previsão multi-horizonte:** Treinar modelos para prever PM2.5 em t+1h, t+6h, t+24h. Comparar com persistência (baseline), ARIMA, Random Forest, XGBoost, LSTM.
+3. **Análise de episódios críticos:** Avaliar especificamente a performance durante **eventos de poluição extrema** (PM2.5 > 100 µg/m³), que são os mais relevantes para saúde pública e onde os modelos Gaussianos mais falham.
+
+### Estado da pesquisa existente (Análise de Redundância)
+
+| O que já foi feito | O que falta (nossa contribuição) |
+|---|---|
+| ML vs. Gaussiano para PM2.5 em cidades asiáticas e europeias | **Estudo para a RMSP** (Região Metropolitana de São Paulo) — pouquíssimos papers com dados do CETESB |
+| XGBoost/LSTM para previsão horária genérica | Análise **focada em episódios críticos** — a precisão nos percentis 90/95/99 de PM2.5 |
+| Modelos ML com dados meteorológicos | Incorporar **dados de queimadas** (INPE) como feature sazonal para o Brasil |
+
+### Datasets públicos
+
+| Dataset | Tamanho | Acesso |
+|---------|---------|--------|
+| [CETESB - QUALAR](https://qualar.cetesb.sp.gov.br/) | ~70 estações, dados horários, 2000-presente | Público, gratuito |
+| [OpenAQ](https://openaq.org/) | Dados globais de qualidade do ar | Público, API |
+| [INPE - BDQueimadas](https://terrabrasilis.dpi.inpe.br/queimadas/) | Focos de queimadas com geolocalização | Público |
+| [NASA MERRA-2](https://disc.gsfc.nasa.gov/) | Reanálise atmosférica global | Público |
+| [ML-HAPPG (2025)](https://catalogue.ceda.ac.uk/) | Dataset global horário de poluentes via ML | Público |
+
+### Dificuldades e riscos
+
+| Dificuldade | Severidade | Mitigação |
+|-------------|:----------:|-----------|
+| Dados do CETESB têm muitos valores faltantes (sensores offline) | ⚠️ Alta | Usar imputação por interpolação temporal ou KNN. Selecionar apenas estações com >80% de completude |
+| Comparação com modelo Gaussiano requer implementação ou simulador externo | ⚠️ Média | Usar baseline simples de persistência + ARIMA ao invés de implementar AERMOD. Citar a comparação teórica da literatura |
+| PM2.5 tem forte sazonalidade (queimadas) que pode inflacionar métricas | ⚠️ Média | Estratificar avaliação por estação do ano. Testar com e sem feature de queimadas |
+
+### Referências-chave
+
+1. **Turner, "Workbook of Atmospheric Dispersion Estimates", EPA, 1970** — Gaussian Plume Model original
+2. **Zheng et al., "Air Quality Forecasting Using Deep Learning", KDD 2015** — Paper seminal de DL para qualidade do ar
+3. **ML-HAPPG, "Global Hourly Air Pollution Prediction", 2025** — Dataset recente
+
+---
+
+## Quadro Comparativo — ML vs. Fórmulas Matemáticas
+
+| # | Proposta | Fórmula Alvo | Dataset Principal | Redundância | Originalidade | Viabilidade (4 meses) |
+|---|---------|-------------|------------------|:-----------:|:-------------:|:--------------------:|
+| C1 | Concreto: ML + Regressão Simbólica vs. ACI | Lei de Abrams / ACI 318 | UCI Concrete (1.030 amostras) | ⚠️ Alta (muitos papers) | ⭐⭐⭐⭐⭐ (regressão simbólica é rara) | ⭐⭐⭐⭐⭐ |
+| C2 | Evapotranspiração: ML vs. Penman-Monteith com dados escassos | FAO-56 PM | INMET (~600 estações BR) | ⚠️ Média (poucos papers BR) | ⭐⭐⭐⭐ | ⭐⭐⭐⭐ |
+| C3 | Opções: Deep Learning vs. Black-Scholes na B3 | Black-Scholes-Merton | B3 / Yahoo Finance | ⚠️ Baixa para Brasil | ⭐⭐⭐⭐ | ⭐⭐⭐ |
+| C4 | Baterias: ML vs. ECM para SOH de Li-Ion | Coulomb counting / ECM | NASA PCoE + Stanford (128 baterias) | ⚠️ Média | ⭐⭐⭐⭐ | ⭐⭐⭐⭐ |
+| C5 | Qualidade do Ar: ML vs. Gaussiano para PM2.5 na RMSP | Gaussian Plume / AERMOD | CETESB QUALAR (~70 estações) | ⚠️ Baixa para Brasil | ⭐⭐⭐⭐⭐ | ⭐⭐⭐⭐ |
+
+> ### Recomendação — Top 3
+> | Rank | Proposta | Por que |
+> |------|---------|--------|
+> | 🥇 | **C1** — Concreto + Regressão Simbólica | Viabilidade máxima (dataset pronto, 1 arquivo CSV). Regressão simbólica é diferencial forte e publicável. Não precisa de hardware especial |
+> | 🥈 | **C5** — PM2.5 na RMSP vs. Gaussiano | Impacto social alto (saúde pública). Dados brasileiros do CETESB. Quase nenhum paper nesse recorte. Feature de queimadas é contribuição única |
+> | 🥉 | **C2** — Evapotranspiração vs. PM com INMET | Dados abundantes do INMET. Altíssima relevância para agricultura brasileira. A análise de escassez progressiva de inputs é contribuição original |
+
