@@ -3,10 +3,10 @@
 ---
 
 ## Instruções para busca
-**Google Scholar:** Apenas copiar a string e buscar
-**Scopus:** TITLE-ABS-KEY({string})
-**IEEE Xplore:** Pode usar Field Tags. Pesquisar
-**Web of Science:** TS=({string})
+**Google Scholar:** Apenas copiar a string e buscar  
+**Scopus:** TITLE-ABS-KEY({string})  
+**IEEE Xplore:** Pode usar Field Tags. Pesquisar  
+**Web of Science:** TS=({string})  
 
 ---
 
