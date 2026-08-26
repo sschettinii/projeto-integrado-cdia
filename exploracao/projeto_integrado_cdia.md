@@ -9,7 +9,7 @@
 [Industrial anomaly detection benchmark dataset](https://www.mvtec.com/research-teaching/datasets/mvtec-ad) \- 5.000 img. alta res. obj. industriais 70 anomalias  
 [VisA (Visual Anomaly)](https://github.com/amazon-science/spot-diff) \- 10.000 img. alta res. obj. industriais 78 anomalias  
 **Rins** \- professor  
-**Bolsa in vitro** \- professor
+**Bolsa in vitro** \- professor  
 [Multi-label Stream Classification Software and Datasets](https://biomal-home.netlify.app/post/multi-label-stream-classification-software-and-datasets/)
 
 ## Ferramentas
