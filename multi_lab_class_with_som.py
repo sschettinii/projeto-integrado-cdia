@@ -2,6 +2,8 @@ import numpy as np
 from sklearn.datasets import make_multilabel_classification
 from sklearn.preprocessing import MinMaxScaler
 
+# n_classes: Total number of classes
+# n_labels: Average number of active classes assigned to each instance
 def generate_multilabel_data(n_samples=1000, n_features=20, n_classes=5, n_labels=2, random_state=42):
     X, Y = make_multilabel_classification(
         n_samples=n_samples,
@@ -81,15 +83,31 @@ def som_train(x_train, m, n, alpha_0, sigma_0, T, train_mode='sequential', batch
 
     return grid
 
-X, Y = generate_multilabel_data(n_samples=600, n_features=12, n_classes=4, n_labels=2)
-m, n = 10, 10
-grid = som_train(
-    x_train=X,
-    m=m,
-    n=n,
-    alpha_0=0.5,
-    sigma_0=max(m, n) / 2.0,
-    T=100,
-    train_mode='sequential',
-    decay_method='exp'
-)
+
+if __name__ == "__main__":
+    n_classes = 5
+    m, n = 10, 10
+    X, Y = generate_multilabel_data(n_samples=600, n_features=12, n_classes=n_classes, n_labels=2)
+    class_datasets = {
+        c: X[Y[:, c] == 1] 
+        for c in range(n_classes)
+    }
+
+    soms = {}
+    for label in range(n_classes):
+        x_subset = class_datasets[label]
+        
+        trained_grid = som_train(
+            x_train=x_subset,
+            m=m,
+            n=n,
+            alpha_0=0.5,
+            sigma_0=max(m, n) / 2.0,
+            T=100,
+            train_mode='batch',
+            decay_method='exp',
+            batch_size=10
+        )
+        soms[label] = trained_grid
+    
+    print("Treinamento concluído!")
