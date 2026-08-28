@@ -1,4 +1,20 @@
 import numpy as np
+from sklearn.datasets import make_multilabel_classification
+from sklearn.preprocessing import MinMaxScaler
+
+def generate_multilabel_data(n_samples=1000, n_features=20, n_classes=5, n_labels=2, random_state=42):
+    X, Y = make_multilabel_classification(
+        n_samples=n_samples,
+        n_features=n_features,
+        n_classes=n_classes,
+        n_labels=n_labels,
+        allow_unlabeled=False,
+        random_state=random_state
+    )
+    scaler = MinMaxScaler()
+    X_normalized = scaler.fit_transform(X)
+    
+    return X_normalized, Y
 
 def init_params(m, n, data_dim):
     return np.random.randn(m, n, data_dim)
@@ -64,3 +80,16 @@ def som_train(x_train, m, n, alpha_0, sigma_0, T, train_mode='sequential', batch
             raise ValueError(f"train_mode '{train_mode}' inválido. Use 'sequential' ou 'batch'.")
 
     return grid
+
+X, Y = generate_multilabel_data_sklearn(n_samples=600, n_features=12, n_classes=4, n_labels=2)
+m, n = 10, 10
+grid = som_train(
+    x_train=X,
+    m=m,
+    n=n,
+    alpha_0=0.5,
+    sigma_0=max(m, n) / 2.0,
+    T=100,
+    train_mode='sequential',
+    decay_method='exp'
+)
