@@ -81,7 +81,7 @@ def som_train(x_train, m, n, alpha_0, sigma_0, T, train_mode='sequential', batch
 
     return grid
 
-X, Y = generate_multilabel_data_sklearn(n_samples=600, n_features=12, n_classes=4, n_labels=2)
+X, Y = generate_multilabel_data(n_samples=600, n_features=12, n_classes=4, n_labels=2)
 m, n = 10, 10
 grid = som_train(
     x_train=X,
