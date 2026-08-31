@@ -88,6 +88,15 @@ if __name__ == "__main__":
     n_classes = 5
     m, n = 10, 10
     X, Y = generate_multilabel_data(n_samples=600, n_features=12, n_classes=n_classes, n_labels=2)
+
+    T = Y.T @ Y
+
+    N = Y.shape[0]
+    T_diag = np.diag(T)
+    P = np.divide(T, T_diag, out=np.zeros_like(T, dtype=float), where=T_diag!=0)
+    marginal_prob = T_diag / N
+    np.fill_diagonal(P, marginal_prob)
+
     class_datasets = {
         c: X[Y[:, c] == 1] 
         for c in range(n_classes)
