@@ -45,16 +45,14 @@ def update_weights(grid, alpha_decayed, h_ci, x):
     h_ci_expanded = h_ci[:, :, np.newaxis]
     grid += alpha_decayed * h_ci_expanded * (x - grid)
 
-def som_train(x_train, m, n, alpha_0, sigma_0, T, train_mode='sequential', batch_size=10, decay_method='exp'):
+def som_train(x_train, m, n, alpha_0, sigma_0, T, train_mode='sequential', decay_method='exp', tol=1e-6):
     n_samples, input_dim = x_train.shape
     grid = init_params(m, n, input_dim)
 
-    if train_mode == 'batch' and (batch_size is None or batch_size <= 0):
-        raise ValueError("batch mode requires batch_size > 0.")
-
     for epoch in range(T):
         alpha_decayed, sigma_decayed = decay_params(alpha_0, sigma_0, epoch, T, decay_method=decay_method)
-        
+        grid_prev = grid.copy()
+
         if train_mode == 'sequential':
             for x in x_train:
                 bmu_idx = get_bmu_idx(grid, x)
@@ -62,24 +60,25 @@ def som_train(x_train, m, n, alpha_0, sigma_0, T, train_mode='sequential', batch
                 update_weights(grid, alpha_decayed, h_ci, x)
 
         elif train_mode == 'batch':
-            for start_idx in range(0, n_samples, batch_size):
-                batch = x_train[start_idx: start_idx + batch_size]
+            numerator = np.zeros((m, n, input_dim))
+            denominator = np.zeros((m, n, 1))
 
-                numerator = np.zeros((m, n, input_dim))
-                denominator = np.zeros((m, n, 1))
+            for x in x_train:
+                bmu_idx = get_bmu_idx(grid, x)
+                h_ci = neighbor_func(bmu_idx, m, n, sigma_decayed)
 
-                for x in batch:
-                    bmu_idx = get_bmu_idx(grid, x)
-                    h_ci = neighbor_func(bmu_idx, m, n, sigma_decayed)
-
-                    numerator += h_ci * x
-                    denominator += h_ci
-                
-                mask = denominator > 0
-                grid = np.where(mask, numerator / denominator, grid)
+                numerator += h_ci[..., np.newaxis] * x
+                denominator += h_ci[..., np.newaxis]
+            
+            mask = denominator > 0
+            grid = np.where(mask, numerator / denominator, grid)
         
         else:
             raise ValueError(f"train_mode '{train_mode}' inválido. Use 'sequential' ou 'batch'.")
+
+        if np.allclose(grid, grid_prev, atol=tol):
+            print(f"Convergência atingida na época {epoch + 1}.")
+            break
 
     return grid
 
@@ -87,10 +86,14 @@ def som_train(x_train, m, n, alpha_0, sigma_0, T, train_mode='sequential', batch
 if __name__ == "__main__":
     n_classes = 5
     m, n = 10, 10
+
+    # generate synthetic multi-class data with sklearn.datasets
     X, Y = generate_multilabel_data(n_samples=600, n_features=12, n_classes=n_classes, n_labels=2)
 
+    # build T
     T = Y.T @ Y
 
+    # build P
     N = Y.shape[0]
     T_diag = np.diag(T)
     P = np.divide(T, T_diag, out=np.zeros_like(T, dtype=float), where=T_diag!=0)
@@ -115,8 +118,7 @@ if __name__ == "__main__":
             T=100,
             train_mode='batch',
             decay_method='exp',
-            batch_size=10
         )
         soms[label] = trained_grid
     
-    print("Treinamento concluído!")
+    print("\nTreinamento concluído!")
