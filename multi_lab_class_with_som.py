@@ -33,7 +33,7 @@ def decay_params(alpha_0, sigma_0, epoch, T, decay_method='exp'):
 
 def get_bmu_idx(grid, instance):
     dist = np.linalg.norm(grid - instance, axis=-1)
-    return np.unravel_index(np.argmin(dist), dist.shape)
+    return np.unravel_index(np.nanargmin(dist), dist.shape)
 
 def neighbor_func(bmu_idx, m, n, sigma_decayed):
     I, J = np.indices((m, n))
@@ -45,7 +45,9 @@ def update_weights(grid, alpha_decayed, h_ci, x):
     h_ci_expanded = h_ci[:, :, np.newaxis]
     grid += alpha_decayed * h_ci_expanded * (x - grid)
 
-def som_train(x_train, m, n, alpha_0, T, sigma_0=max(m,n)/2, train_mode='sequential', decay_method='exp', tol=1e-6):
+def som_train(x_train, m, n, alpha_0, T, sigma_0=None, train_mode='sequential', decay_method='exp', tol=1e-6):
+    if sigma_0 is None:
+        sigma_0 = max(m, n) / 2
     n_samples, input_dim = x_train.shape
     grid = init_params(m, n, input_dim)
 
@@ -94,6 +96,7 @@ def prune_neurons(grid, x_train, min_instances=4):
     m, n, _ = grid.shape
     counts = np.zeros((m, n), dtype=int)
 
+    # count how many data points each neuron is BMU
     for x in x_train:
         bmu_i, bmu_j = get_bmu_idx(grid, x)
         counts[bmu_i][bmu_j] += 1
@@ -104,6 +107,43 @@ def prune_neurons(grid, x_train, min_instances=4):
     grid_pruned[~valid_mask] = np.nan
 
     return grid_pruned, valid_mask
+
+
+def compute_neuron_thresholds(grid, valid_mask, x_train, class_idx, P, n_classes):
+    m, n, _ = grid.shape
+    aver_out   = np.full((m, n), np.nan)
+    thresholds = np.full((m, n), np.nan)
+
+    sub_lists = [[[] for _ in range(n)] for _ in range(m)]
+    for x in x_train:
+        bmu_i, bmu_j = get_bmu_idx(grid, x)
+        sub_lists[bmu_i][bmu_j].append(x)
+
+    j = class_idx
+    p_yj = P[j, j]
+
+    conditional_prod = 1.0
+    for k in range(n_classes):
+        if k == j:
+            continue
+        p_yk_given_yj = P[k, j]
+        if p_yk_given_yj > 0:
+            conditional_prod *= p_yk_given_yj
+
+    for i in range(m):
+        for jj in range(n):
+            if not valid_mask[i, jj] or len(sub_lists[i][jj]) == 0:
+                continue
+
+            mb = grid[i, jj]
+            Xb = np.array(sub_lists[i][jj])
+
+            dists = np.linalg.norm(Xb - mb, axis=1)
+            aver_out[i, jj] = np.mean(np.exp(-dists))
+
+            thresholds[i, jj] = p_yj * conditional_prod * aver_out[i, jj]
+
+    return aver_out, thresholds
 
 
 if __name__ == "__main__":
@@ -128,10 +168,14 @@ if __name__ == "__main__":
         for c in range(n_classes)
     }
 
-    soms = {}
+    soms         = {}
+    valid_masks  = {}
+    aver_outs    = {}
+    thresholds   = {}
+
     for label in range(n_classes):
         x_subset = class_datasets[label]
-        
+
         trained_grid = som_train(
             x_train=x_subset,
             m=m,
@@ -142,10 +186,25 @@ if __name__ == "__main__":
             train_mode='batch',
             decay_method='exp',
         )
+
         trained_grid, valid_mask = prune_neurons(trained_grid, x_subset, min_instances=4)
-        soms[label] = trained_grid
+
+        aver_out, thresh = compute_neuron_thresholds(
+            grid       = trained_grid,
+            valid_mask = valid_mask,
+            x_train    = x_subset,
+            class_idx  = label,
+            P          = P,
+            n_classes  = n_classes,
+        )
+
+        soms[label]        = trained_grid
+        valid_masks[label] = valid_mask
+        aver_outs[label]   = aver_out
+        thresholds[label]  = thresh
 
         n_valid = valid_mask.sum()
-        print(f"  Classe {label}: {n_valid}/{m*n} neurônios válidos após poda.")
-    
+        print(f"  Classe {label}: {n_valid}/{m*n} neurônios válidos | "
+              f"threshold médio = {np.nanmean(thresh):.4f}")
+
     print("\nTreinamento concluído!")
