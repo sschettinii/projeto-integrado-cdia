@@ -45,7 +45,7 @@ def update_weights(grid, alpha_decayed, h_ci, x):
     h_ci_expanded = h_ci[:, :, np.newaxis]
     grid += alpha_decayed * h_ci_expanded * (x - grid)
 
-def som_train(x_train, m, n, alpha_0, sigma_0, T, train_mode='sequential', decay_method='exp', tol=1e-6):
+def som_train(x_train, m, n, alpha_0, T, sigma_0=max(m,n)/2, train_mode='sequential', decay_method='exp', tol=1e-6):
     n_samples, input_dim = x_train.shape
     grid = init_params(m, n, input_dim)
 
@@ -60,18 +60,25 @@ def som_train(x_train, m, n, alpha_0, sigma_0, T, train_mode='sequential', decay
                 update_weights(grid, alpha_decayed, h_ci, x)
 
         elif train_mode == 'batch':
-            numerator = np.zeros((m, n, input_dim))
-            denominator = np.zeros((m, n, 1))
+            sub_lists = [[[] for _ in range(n)] for _ in range(m)]
 
             for x in x_train:
-                bmu_idx = get_bmu_idx(grid, x)
-                h_ci = neighbor_func(bmu_idx, m, n, sigma_decayed)
+                bmu_i, bmu_j = get_bmu_idx(grid, x)
+                sub_lists[bmu_i][bmu_j].append(x)
+                
+            for i in range(m):
+                for j in range(n):
+                    samples = []
 
-                numerator += h_ci[..., np.newaxis] * x
-                denominator += h_ci[..., np.newaxis]
-            
-            mask = denominator > 0
-            grid = np.where(mask, numerator / denominator, grid)
+                    for di in range(m):
+                        for dj in range(n):
+                            dist_grid = np.sqrt((i - di)**2 + (j - dj)**2)
+
+                            if dist_grid <= sigma_decayed:
+                                samples.extend(sub_lists[di][dj])
+                                
+                    if len(samples) > 0:
+                        grid[i, j] = np.mean(samples, axis=0)
         
         else:
             raise ValueError(f"train_mode '{train_mode}' inválido. Use 'sequential' ou 'batch'.")
@@ -81,6 +88,22 @@ def som_train(x_train, m, n, alpha_0, sigma_0, T, train_mode='sequential', decay
             break
 
     return grid
+
+
+def prune_neurons(grid, x_train, min_instances=4):
+    m, n, _ = grid.shape
+    counts = np.zeros((m, n), dtype=int)
+
+    for x in x_train:
+        bmu_i, bmu_j = get_bmu_idx(grid, x)
+        counts[bmu_i][bmu_j] += 1
+
+    valid_mask = counts >= min_instances
+
+    grid_pruned = grid.copy().astype(float)
+    grid_pruned[~valid_mask] = np.nan
+
+    return grid_pruned, valid_mask
 
 
 if __name__ == "__main__":
@@ -119,6 +142,10 @@ if __name__ == "__main__":
             train_mode='batch',
             decay_method='exp',
         )
+        trained_grid, valid_mask = prune_neurons(trained_grid, x_subset, min_instances=4)
         soms[label] = trained_grid
+
+        n_valid = valid_mask.sum()
+        print(f"  Classe {label}: {n_valid}/{m*n} neurônios válidos após poda.")
     
     print("\nTreinamento concluído!")
