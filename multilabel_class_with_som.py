@@ -33,6 +33,8 @@ def decay_params(alpha_0, sigma_0, epoch, T, decay_method='exp'):
 
 def get_bmu_idx(grid, instance):
     dist = np.linalg.norm(grid - instance, axis=-1)
+    if np.all(np.isnan(dist)):
+        return (0, 0)
     return np.unravel_index(np.nanargmin(dist), dist.shape)
 
 def neighbor_func(bmu_idx, m, n, sigma_decayed):
@@ -96,12 +98,14 @@ def prune_neurons(grid, x_train, min_instances=4):
     m, n, _ = grid.shape
     counts = np.zeros((m, n), dtype=int)
 
-    # count how many data points each neuron is BMU
     for x in x_train:
         bmu_i, bmu_j = get_bmu_idx(grid, x)
         counts[bmu_i][bmu_j] += 1
 
     valid_mask = counts >= min_instances
+    if not np.any(valid_mask):
+        max_count = counts.max()
+        valid_mask = (counts == max_count) if max_count > 0 else np.ones((m, n), dtype=bool)
 
     grid_pruned = grid.copy().astype(float)
     grid_pruned[~valid_mask] = np.nan
@@ -145,6 +149,22 @@ def compute_neuron_thresholds(grid, valid_mask, x_train, class_idx, P, n_classes
 
     return aver_out, thresholds
 
+
+def update_thresholds(valid_masks, aver_outs, P, n_classes):
+    thresholds = {}
+    for j in range(n_classes):
+        p_yj = P[j, j]
+        conditional_prod = 1.0
+        for k in range(n_classes):
+            if k != j and P[k, j] > 0:
+                conditional_prod *= P[k, j]
+
+        thresholds[j] = np.where(
+            valid_masks[j],
+            p_yj * conditional_prod * aver_outs[j],
+            np.nan
+        )
+    return thresholds
 
 def sort_neurons(grid, instance, valid_mask=None):
     dists = np.linalg.norm(grid - instance, axis=-1)
@@ -345,6 +365,30 @@ if __name__ == "__main__":
             Y_pred = predict_classes(WinClasses, outputWinNr, WinNr, P, thresholds, z)
 
             print(f"[t={stream_gen.t:04d}] Labels reais: {labels_ativas} | Predição Y: {Y_pred}")
+
+            eta = 0.05
+            for label in Y_pred:
+                bmu_idx = WinNr[label]
+                soms[label][bmu_idx] += eta * (x_t - soms[label][bmu_idx])
+
+            N += 1
+            z = ((N - 1) * z + len(Y_pred)) / N
+
+            for label in Y_pred:
+                bmu_idx = WinNr[label]
+                m_updated = soms[label][bmu_idx]
+                aver_outs[label][bmu_idx] += np.exp(-np.linalg.norm(x_t - m_updated))
+
+            for j in Y_pred:
+                for k in Y_pred:
+                    T[j, k] += 1
+
+            T_diag = np.diag(T)
+            P = np.divide(T, T_diag, out=np.zeros_like(T, dtype=float), where=T_diag != 0)
+            marginal_prob = T_diag / N
+            np.fill_diagonal(P, marginal_prob)
+
+            thresholds = update_thresholds(valid_masks, aver_outs, P, n_classes)
 
     except KeyboardInterrupt:
         print(f"\nStream interrompido pelo usuário no tempo t={stream_gen.t}.")
