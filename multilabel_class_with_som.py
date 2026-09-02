@@ -145,10 +145,58 @@ def compute_neuron_thresholds(grid, valid_mask, x_train, class_idx, P, n_classes
 
     return aver_out, thresholds
 
+
+def sort_neurons(grid, instance, valid_mask=None):
+    dists = np.linalg.norm(grid - instance, axis=-1)
+    if valid_mask is None:
+        valid_mask = ~np.isnan(dists)
+
+    valid_indices = np.argwhere(valid_mask)
+    neuron_list = []
+    for i, j in valid_indices:
+        neuron_list.append({
+            'idx': (int(i), int(j)),
+            'dist': float(dists[i, j]),
+            'weight': grid[i, j]
+        })
+
+    neuron_list.sort(key=lambda item: item['dist'])
+    return neuron_list
+
+
+def get_knn(NrSort, kn):
+    remaining_classes = list(NrSort.keys())
+    win_classes = []
+
+    while len(remaining_classes) > 1:
+        candidates = []
+        for c in remaining_classes:
+            for neuron in NrSort[c]:
+                candidates.append((neuron['dist'], c))
+
+        candidates.sort(key=lambda x: x[0])
+
+        k = min(kn, len(candidates))
+        top_k = candidates[:k]
+
+        votes = {c: 0 for c in remaining_classes}
+        for _, c in top_k:
+            votes[c] += 1
+
+        winner = max(
+            remaining_classes,
+            key=lambda c: (votes[c], -min((d for d, cls in candidates if cls == c), default=float('inf')))
+        )
+
+        win_classes.append(winner)
+        remaining_classes.remove(winner)
+
+    if remaining_classes:
+        win_classes.append(remaining_classes[0])
+
+    return win_classes
+
 class MultiLabelDataStream:
-    """
-    Gerador de Data Stream Multi-label Infinito com garantia de instâncias multi-label.
-    """
     def __init__(self, n_features=12, n_classes=5, p_multilabel=0.7, seed=42):
         np.random.seed(seed)
         self.n_features = n_features
@@ -161,7 +209,6 @@ class MultiLabelDataStream:
         self.radii = np.random.uniform(0.25, 0.40, size=n_classes)
 
     def get_sample(self):
-        # Sorteia quantidade de labels ativas (ex: 70% chance de ser multi-label com 2 ou 3 classes)
         if np.random.rand() < self.p_multilabel and self.n_classes >= 2:
             n_active = np.random.choice([2, min(3, self.n_classes)])
         else:
@@ -169,14 +216,12 @@ class MultiLabelDataStream:
 
         active_indices = np.random.choice(self.n_classes, size=n_active, replace=False)
         
-        # Posição central é a combinação das classes ativas
         center = self.centers[active_indices].mean(axis=0)
         sigma = self.sigmas[active_indices].mean()
         
         x = np.random.normal(loc=center, scale=sigma, size=self.n_features)
         x = np.clip(x, 0.0, 1.0)
         
-        # Atribui 1 para as classes sorteadas + qualquer outra que esteja suficientemente próxima
         y = np.zeros(self.n_classes, dtype=int)
         y[active_indices] = 1
         
@@ -247,11 +292,30 @@ if __name__ == "__main__":
         n_valid = valid_mask.sum()
         print(f"  Classe {label}: {n_valid}/{m*n} neurônios válidos | threshold médio = {np.nanmean(thresh):.4f}")
 
+    min_neurons = min(mask.sum() for mask in valid_masks.values())
+    kn = min_neurons if min_neurons % 2 != 0 else min_neurons - 1
+    kn = max(1, kn)
+
     stream_gen = MultiLabelDataStream(n_features=n_features, n_classes=n_classes, seed=42)
 
     try:
         for x_t, y_t in stream_gen.stream_samples(interval=1.0):
             labels_ativas = np.where(y_t == 1)[0].tolist()
-            print(f"[t={stream_gen.t:04d}] Amostra x: {np.round(x_t[:4], 3)}... | Labels y: {y_t} (Ativas: {labels_ativas})")
+
+            NrSort = {}
+            WinNr = {}
+            outputWinNr = {}
+
+            for j in range(n_classes):
+                NrSort[j] = sort_neurons(soms[j], x_t, valid_mask=valid_masks[j])
+
+                WinNr[j] = NrSort[j][0]['idx']
+
+                outputWinNr[j] = np.exp(-NrSort[j][0]['dist'])
+
+            WinClasses = get_knn(NrSort, kn)
+
+            print(f"[t={stream_gen.t:04d}] Labels reais: {labels_ativas} | WinClasses: {WinClasses}")
+
     except KeyboardInterrupt:
         print(f"\nStream interrompido pelo usuário no tempo t={stream_gen.t}.")
