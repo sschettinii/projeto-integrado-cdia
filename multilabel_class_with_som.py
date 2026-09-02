@@ -1,4 +1,5 @@
 import numpy as np
+from collections import deque
 from sklearn.datasets import make_multilabel_classification
 from sklearn.preprocessing import MinMaxScaler
 
@@ -283,6 +284,75 @@ class MultiLabelDataStream:
             if interval > 0:
                 time.sleep(interval)
 
+
+class StreamEvaluator:
+    def __init__(self, n_classes, window_size=50):
+        self.n_classes = n_classes
+        self.window_size = window_size
+        self.y_true_window = deque(maxlen=window_size)
+        self.y_pred_window = deque(maxlen=window_size)
+
+    def update(self, y_true, y_pred):
+        if isinstance(y_true, (list, np.ndarray)) and len(y_true) == self.n_classes and set(y_true).issubset({0, 1}):
+            true_vec = np.array(y_true, dtype=int)
+        else:
+            true_vec = np.zeros(self.n_classes, dtype=int)
+            true_vec[list(y_true)] = 1
+
+        if isinstance(y_pred, (list, np.ndarray)) and len(y_pred) == self.n_classes and set(y_pred).issubset({0, 1}):
+            pred_vec = np.array(y_pred, dtype=int)
+        else:
+            pred_vec = np.zeros(self.n_classes, dtype=int)
+            pred_vec[list(y_pred)] = 1
+
+        self.y_true_window.append(true_vec)
+        self.y_pred_window.append(pred_vec)
+
+    def compute_jaccard_accuracy(self):
+        if len(self.y_true_window) == 0:
+            return 0.0
+
+        jaccards = []
+        for y_t, y_p in zip(self.y_true_window, self.y_pred_window):
+            intersection = np.logical_and(y_t, y_p).sum()
+            union = np.logical_or(y_t, y_p).sum()
+            jaccards.append(1.0 if union == 0 else intersection / union)
+
+        return float(np.mean(jaccards))
+
+    def compute_macro_f1(self):
+        if len(self.y_true_window) == 0:
+            return 0.0
+
+        Y_true_mat = np.array(self.y_true_window)
+        Y_pred_mat = np.array(self.y_pred_window)
+
+        f1_scores = []
+        for c in range(self.n_classes):
+            tp = np.logical_and(Y_true_mat[:, c] == 1, Y_pred_mat[:, c] == 1).sum()
+            fp = np.logical_and(Y_true_mat[:, c] == 0, Y_pred_mat[:, c] == 1).sum()
+            fn = np.logical_and(Y_true_mat[:, c] == 1, Y_pred_mat[:, c] == 0).sum()
+
+            precision = tp / (tp + fp) if (tp + fp) > 0 else 0.0
+            recall = tp / (tp + fn) if (tp + fn) > 0 else 0.0
+
+            if precision + recall > 0:
+                f1 = 2 * (precision * recall) / (precision + recall)
+            else:
+                f1 = 1.0 if (tp + fp + fn) == 0 else 0.0
+
+            f1_scores.append(f1)
+
+        return float(np.mean(f1_scores))
+
+    def get_metrics(self):
+        return {
+            'jaccard': self.compute_jaccard_accuracy(),
+            'macro_f1': self.compute_macro_f1(),
+            'window_size': len(self.y_true_window)
+        }
+
+
 if __name__ == "__main__":
     n_classes = 5
     m, n = 10, 10
@@ -344,6 +414,7 @@ if __name__ == "__main__":
     kn = max(1, kn)
 
     stream_gen = MultiLabelDataStream(n_features=n_features, n_classes=n_classes, seed=42)
+    evaluator = StreamEvaluator(n_classes=n_classes, window_size=50)
 
     try:
         for x_t, y_t in stream_gen.stream_samples(interval=1.0):
@@ -364,7 +435,19 @@ if __name__ == "__main__":
 
             Y_pred = predict_classes(WinClasses, outputWinNr, WinNr, P, thresholds, z)
 
-            print(f"[t={stream_gen.t:04d}] Labels reais: {labels_ativas} | Predição Y: {Y_pred}")
+            evaluator.update(y_true=y_t, y_pred=Y_pred)
+            metrics = evaluator.get_metrics()
+
+            reais_str = str(labels_ativas)
+            pred_str = str(Y_pred)
+
+            print(
+                f"[t={stream_gen.t:04d}] "
+                f"Real: {reais_str:<16} | "
+                f"Pred: {pred_str:<14} | "
+                f"Jaccard (W={metrics['window_size']:02d}): {metrics['jaccard']*100:5.1f}% | "
+                f"Macro F1: {metrics['macro_f1']:.3f}"
+            )
 
             eta = 0.05
             for label in Y_pred:
