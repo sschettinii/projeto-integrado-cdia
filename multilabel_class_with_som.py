@@ -357,8 +357,17 @@ if __name__ == "__main__":
     n_classes = 5
     m, n = 10, 10
     n_features = 6
+    stream_gen = MultiLabelDataStream(n_features=n_features, n_classes=n_classes, seed=42)
 
-    X, Y = generate_multilabel_data(n_samples=600, n_features=n_features, n_classes=n_classes, n_labels=2)
+    n_samples_offline = 600
+    X_list, Y_list = [], []
+    for _ in range(n_samples_offline):
+        x_sample, y_sample = stream_gen.get_sample()
+        X_list.append(x_sample)
+        Y_list.append(y_sample)
+
+    X = np.array(X_list)
+    Y = np.array(Y_list)
 
     T = Y.T @ Y
     N = Y.shape[0]
@@ -413,11 +422,11 @@ if __name__ == "__main__":
     kn = min_neurons if min_neurons % 2 != 0 else min_neurons - 1
     kn = max(1, kn)
 
-    stream_gen = MultiLabelDataStream(n_features=n_features, n_classes=n_classes, seed=42)
+    stream_gen.t = 0
     evaluator = StreamEvaluator(n_classes=n_classes, window_size=50)
 
     try:
-        for x_t, y_t in stream_gen.stream_samples(interval=1.0):
+        for x_t, y_t in stream_gen.stream_samples(interval=0.1):
             labels_ativas = np.where(y_t == 1)[0].tolist()
 
             NrSort = {}
