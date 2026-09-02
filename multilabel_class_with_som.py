@@ -196,6 +196,31 @@ def get_knn(NrSort, kn):
 
     return win_classes
 
+def predict_classes(WinClasses, outputWinNr, WinNr, P, thresholds, z):
+    c1 = WinClasses[0]
+    Y_pred = [c1]
+
+    max_candidates = min(int(np.ceil(z)), len(WinClasses))
+
+    for k in range(1, max_candidates):
+        c = WinClasses[k]
+        p_yc = P[c, c]
+        p_xi_given_yc = outputWinNr[c]
+
+        p_yd_given_yc = 1.0
+        for d in Y_pred:
+            if P[d, c] > 0:
+                p_yd_given_yc *= P[d, c]
+
+        p_bayes = p_yc * p_yd_given_yc * p_xi_given_yc
+
+        tr = thresholds[c][WinNr[c]]
+
+        if p_bayes >= tr:
+            Y_pred.append(c)
+
+    return Y_pred
+
 class MultiLabelDataStream:
     def __init__(self, n_features=12, n_classes=5, p_multilabel=0.7, seed=42):
         np.random.seed(seed)
@@ -251,6 +276,8 @@ if __name__ == "__main__":
     P = np.divide(T, T_diag, out=np.zeros_like(T, dtype=float), where=T_diag!=0)
     marginal_prob = T_diag / N
     np.fill_diagonal(P, marginal_prob)
+
+    z = float(Y.sum(axis=1).mean())
 
     class_datasets = {c: X[Y[:, c] == 1] for c in range(n_classes)}
 
@@ -315,7 +342,9 @@ if __name__ == "__main__":
 
             WinClasses = get_knn(NrSort, kn)
 
-            print(f"[t={stream_gen.t:04d}] Labels reais: {labels_ativas} | WinClasses: {WinClasses}")
+            Y_pred = predict_classes(WinClasses, outputWinNr, WinNr, P, thresholds, z)
+
+            print(f"[t={stream_gen.t:04d}] Labels reais: {labels_ativas} | Predição Y: {Y_pred}")
 
     except KeyboardInterrupt:
         print(f"\nStream interrompido pelo usuário no tempo t={stream_gen.t}.")
