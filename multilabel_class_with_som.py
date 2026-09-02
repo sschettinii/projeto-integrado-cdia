@@ -145,28 +145,69 @@ def compute_neuron_thresholds(grid, valid_mask, x_train, class_idx, P, n_classes
 
     return aver_out, thresholds
 
+class MultiLabelDataStream:
+    """
+    Gerador de Data Stream Multi-label Infinito com garantia de instâncias multi-label.
+    """
+    def __init__(self, n_features=12, n_classes=5, p_multilabel=0.7, seed=42):
+        np.random.seed(seed)
+        self.n_features = n_features
+        self.n_classes = n_classes
+        self.p_multilabel = p_multilabel
+        self.t = 0
+        
+        self.centers = np.random.uniform(0.2, 0.8, size=(n_classes, n_features))
+        self.sigmas = np.random.uniform(0.05, 0.10, size=n_classes)
+        self.radii = np.random.uniform(0.25, 0.40, size=n_classes)
+
+    def get_sample(self):
+        # Sorteia quantidade de labels ativas (ex: 70% chance de ser multi-label com 2 ou 3 classes)
+        if np.random.rand() < self.p_multilabel and self.n_classes >= 2:
+            n_active = np.random.choice([2, min(3, self.n_classes)])
+        else:
+            n_active = 1
+
+        active_indices = np.random.choice(self.n_classes, size=n_active, replace=False)
+        
+        # Posição central é a combinação das classes ativas
+        center = self.centers[active_indices].mean(axis=0)
+        sigma = self.sigmas[active_indices].mean()
+        
+        x = np.random.normal(loc=center, scale=sigma, size=self.n_features)
+        x = np.clip(x, 0.0, 1.0)
+        
+        # Atribui 1 para as classes sorteadas + qualquer outra que esteja suficientemente próxima
+        y = np.zeros(self.n_classes, dtype=int)
+        y[active_indices] = 1
+        
+        dists = np.linalg.norm(self.centers - x, axis=1)
+        y[dists <= self.radii] = 1
+        
+        self.t += 1
+        return x, y
+
+    def stream_samples(self, interval=1.5):
+        import time
+        while True:
+            yield self.get_sample()
+            if interval > 0:
+                time.sleep(interval)
 
 if __name__ == "__main__":
     n_classes = 5
     m, n = 10, 10
+    n_features = 6
 
-    # generate synthetic multi-class data with sklearn.datasets
-    X, Y = generate_multilabel_data(n_samples=600, n_features=12, n_classes=n_classes, n_labels=2)
+    X, Y = generate_multilabel_data(n_samples=600, n_features=n_features, n_classes=n_classes, n_labels=2)
 
-    # build T
     T = Y.T @ Y
-
-    # build P
     N = Y.shape[0]
     T_diag = np.diag(T)
     P = np.divide(T, T_diag, out=np.zeros_like(T, dtype=float), where=T_diag!=0)
     marginal_prob = T_diag / N
     np.fill_diagonal(P, marginal_prob)
 
-    class_datasets = {
-        c: X[Y[:, c] == 1] 
-        for c in range(n_classes)
-    }
+    class_datasets = {c: X[Y[:, c] == 1] for c in range(n_classes)}
 
     soms         = {}
     valid_masks  = {}
@@ -204,7 +245,13 @@ if __name__ == "__main__":
         thresholds[label]  = thresh
 
         n_valid = valid_mask.sum()
-        print(f"  Classe {label}: {n_valid}/{m*n} neurônios válidos | "
-              f"threshold médio = {np.nanmean(thresh):.4f}")
+        print(f"  Classe {label}: {n_valid}/{m*n} neurônios válidos | threshold médio = {np.nanmean(thresh):.4f}")
 
-    print("\nTreinamento concluído!")
+    stream_gen = MultiLabelDataStream(n_features=n_features, n_classes=n_classes, seed=42)
+
+    try:
+        for x_t, y_t in stream_gen.stream_samples(interval=1.0):
+            labels_ativas = np.where(y_t == 1)[0].tolist()
+            print(f"[t={stream_gen.t:04d}] Amostra x: {np.round(x_t[:4], 3)}... | Labels y: {y_t} (Ativas: {labels_ativas})")
+    except KeyboardInterrupt:
+        print(f"\nStream interrompido pelo usuário no tempo t={stream_gen.t}.")
