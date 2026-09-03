@@ -242,44 +242,136 @@ def predict_classes(WinClasses, outputWinNr, WinNr, P, thresholds, z):
 
     return Y_pred
 
-class MultiLabelDataStream:
-    def __init__(self, n_features=12, n_classes=5, p_multilabel=0.7, seed=42):
-        np.random.seed(seed)
+class MOASphericalStream:
+    def __init__(
+        self, 
+        n_features=2, 
+        n_classes=5, 
+        n_samples=95000, 
+        sd=1500,
+        seed=42, 
+        drift_speed=0.02
+    ):
+        self.rng = np.random.RandomState(seed)
         self.n_features = n_features
         self.n_classes = n_classes
-        self.p_multilabel = p_multilabel
+        self.n_samples = n_samples
+        self.sd = sd
+        self.drift_speed = drift_speed
         self.t = 0
-        
-        self.centers = np.random.uniform(0.2, 0.8, size=(n_classes, n_features))
-        self.sigmas = np.random.uniform(0.05, 0.10, size=n_classes)
-        self.radii = np.random.uniform(0.25, 0.40, size=n_classes)
+
+        self.centers = self.rng.uniform(0.15, 0.85, size=(n_classes, n_features))
+        self.radii = self._compute_radii()
+        self.sigmas = self.radii * 0.4
+
+        self.velocities = self.rng.randn(n_classes, n_features) * drift_speed
+
+        self.substream_size = n_samples // 4
+        self._init_label_relationships()
+
+    def _compute_radii(self):
+        if self.n_classes <= 2:
+            return self.rng.uniform(0.25, 0.40, size=self.n_classes)
+
+        dists = []
+        for i in range(self.n_classes):
+            for j in range(i + 1, self.n_classes):
+                dists.append(np.linalg.norm(self.centers[i] - self.centers[j]))
+
+        mean_dist = np.mean(dists) if dists else 0.5
+        base_radius = mean_dist * 0.45
+        return self.rng.uniform(base_radius * 0.8, base_radius * 1.2, size=self.n_classes)
+
+    def _init_label_relationships(self):
+        self.P_base = np.zeros((self.n_classes, self.n_classes))
+
+        for j in range(self.n_classes):
+            for k in range(self.n_classes):
+                if j == k:
+                    continue
+                dist_jk = np.linalg.norm(self.centers[j] - self.centers[k])
+                overlap = max(0, (self.radii[j] + self.radii[k]) - dist_jk)
+                max_overlap = self.radii[j] + self.radii[k]
+                self.P_base[k, j] = overlap / max_overlap if max_overlap > 0 else 0
+
+        self.P_perturbed = {}
+        for sub_idx in range(4):
+            P_sub = self.P_base.copy()
+            if sub_idx in (1, 2):
+                frac = 0.10
+            elif sub_idx == 3:
+                frac = 0.30
+            else:
+                self.P_perturbed[sub_idx] = P_sub
+                continue
+
+            off_diag = [(k, j) for k in range(self.n_classes)
+                        for j in range(self.n_classes) if k != j]
+            n_perturb = max(1, int(len(off_diag) * frac))
+            chosen = self.rng.choice(len(off_diag), size=n_perturb, replace=False)
+
+            for idx in chosen:
+                k, j = off_diag[idx]
+                p_yk = self.P_base[k, k] if k < self.n_classes else 0.5
+                noise = self.rng.normal(loc=self.P_base[k, j], scale=0.3)
+                P_sub[k, j] = np.clip(noise, 0.0, 1.0)
+
+            self.P_perturbed[sub_idx] = P_sub
+
+    def _get_substream_index(self):
+        idx = self.t // self.substream_size
+        return min(idx, 3)
+
+    def _apply_spatial_drift(self):
+        if self.sd > 0 and self.t > 0 and self.t % self.sd == 0:
+            self.centers += self.velocities
+            self.centers = np.clip(self.centers, 0.05, 0.95)
+
+            self.velocities += self.rng.randn(self.n_classes, self.n_features) * (self.drift_speed * 0.3)
+            self.velocities = np.clip(self.velocities, -self.drift_speed * 2, self.drift_speed * 2)
 
     def get_sample(self):
-        if np.random.rand() < self.p_multilabel and self.n_classes >= 2:
-            n_active = np.random.choice([2, min(3, self.n_classes)])
-        else:
-            n_active = 1
+        self._apply_spatial_drift()
 
-        active_indices = np.random.choice(self.n_classes, size=n_active, replace=False)
-        
-        center = self.centers[active_indices].mean(axis=0)
-        sigma = self.sigmas[active_indices].mean()
-        
-        x = np.random.normal(loc=center, scale=sigma, size=self.n_features)
+        primary_class = self.rng.randint(0, self.n_classes)
+        x = self.rng.normal(loc=self.centers[primary_class],
+                            scale=self.sigmas[primary_class],
+                            size=self.n_features)
         x = np.clip(x, 0.0, 1.0)
-        
+
         y = np.zeros(self.n_classes, dtype=int)
-        y[active_indices] = 1
-        
         dists = np.linalg.norm(self.centers - x, axis=1)
         y[dists <= self.radii] = 1
-        
+
+        if y.sum() == 0:
+            y[primary_class] = 1
+
+        sub_idx = self._get_substream_index()
+        P_current = self.P_perturbed[sub_idx]
+        active = np.where(y == 1)[0]
+        for c in range(self.n_classes):
+            if y[c] == 1:
+                continue
+            for d in active:
+                if P_current[c, d] > 0 and self.rng.rand() < P_current[c, d] * 0.15:
+                    y[c] = 1
+                    break
+
         self.t += 1
         return x, y
 
-    def stream_samples(self, interval=1.5):
+    def get_offline_data(self, fraction=0.10):
+        n_offline = int(self.n_samples * fraction)
+        X_list, Y_list = [], []
+        for _ in range(n_offline):
+            x, y = self.get_sample()
+            X_list.append(x)
+            Y_list.append(y)
+        return np.array(X_list), np.array(Y_list)
+
+    def stream_samples(self, interval=0.1):
         import time
-        while True:
+        while self.t < self.n_samples:
             yield self.get_sample()
             if interval > 0:
                 time.sleep(interval)
@@ -354,20 +446,21 @@ class StreamEvaluator:
 
 
 if __name__ == "__main__":
+    n_features = 2
     n_classes = 5
-    m, n = 10, 10
-    n_features = 6
-    stream_gen = MultiLabelDataStream(n_features=n_features, n_classes=n_classes, seed=42)
+    n_samples = 95000
+    sd = 1500
+    m, n = 2, 2
 
-    n_samples_offline = 600
-    X_list, Y_list = [], []
-    for _ in range(n_samples_offline):
-        x_sample, y_sample = stream_gen.get_sample()
-        X_list.append(x_sample)
-        Y_list.append(y_sample)
+    stream_gen = MOASphericalStream(
+        n_features=n_features,
+        n_classes=n_classes,
+        n_samples=n_samples,
+        sd=sd,
+        seed=42,
+    )
 
-    X = np.array(X_list)
-    Y = np.array(Y_list)
+    X, Y = stream_gen.get_offline_data(fraction=0.10)
 
     T = Y.T @ Y
     N = Y.shape[0]
@@ -422,7 +515,6 @@ if __name__ == "__main__":
     kn = min_neurons if min_neurons % 2 != 0 else min_neurons - 1
     kn = max(1, kn)
 
-    stream_gen.t = 0
     evaluator = StreamEvaluator(n_classes=n_classes, window_size=50)
 
     try:
